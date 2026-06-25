@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ピラミッドブロック</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* グリッド背景のスタイル */
+        .grid-bg {
+            background-color: #fcfcfc;
+        }
+        /* ドラッグ中のスタイル */
+        .dragging {
+            opacity: 0.85;
+            cursor: grabbing !important;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            z-index: 50 !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col p-3 md:p-6 justify-start items-center">
+
+    <div class="max-w-4xl w-full flex flex-col gap-4 flex-grow">
+        
+        <!-- 1. ステージ（最上部） -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-2 md:p-4 w-full h-[60vh] min-h-[350px] relative flex flex-col flex-grow">
+            <div id="stage" class="grid-bg flex-grow w-full h-full rounded-xl border border-gray-100 relative overflow-hidden select-none">
+                <!-- グリッド線を動的に描画する背景レイヤー -->
+                <div id="grid-lines" class="absolute inset-0 pointer-events-none"></div>
+
+                <!-- ピラミッド配置のガイドラインコンテナ（枠線非表示のため、中身は空になります） -->
+                <div id="guide-container" class="absolute inset-0 pointer-events-none"></div>
+                
+                <!-- 動かす正方形コンテナ -->
+                <div id="blocks-container" class="absolute inset-0"></div>
+
+                <!-- 「まいった」ボタン (5段目以上で非表示のときだけ表示) -->
+                <div id="surrender-container" class="absolute inset-x-0 bottom-6 flex justify-center z-30 hidden">
+                    <button id="btn-surrender" onclick="revealBlocks()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-full shadow-lg border-2 border-white transform hover:scale-105 active:scale-95 transition-all text-base tracking-wider">
+                        まいった
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. セレクトを兼ねた表（下部） -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 w-full overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-center text-sm min-w-[600px]">
+                    <thead>
+                        <tr class="text-gray-500 text-xs font-bold">
+                            <th class="border border-gray-200 p-2 bg-gray-50 w-28">だん数</th>
+                            <!-- 1〜8段のセレクトボタン（数字のみ） -->
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-1" onclick="selectLevel(1)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">1</button>
+                            </td>
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-2" onclick="selectLevel(2)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">2</button>
+                            </td>
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-3" onclick="selectLevel(3)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">3</button>
+                            </td>
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-4" onclick="selectLevel(4)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">4</button>
+                            </td>
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-5" onclick="selectLevel(5)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">5</button>
+                            </td>
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-6" onclick="selectLevel(6)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">6</button>
+                            </td>
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-7" onclick="selectLevel(7)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">7</button>
+                            </td>
+                            <td class="border border-gray-200 p-1">
+                                <button id="btn-level-8" onclick="selectLevel(8)" class="w-full py-2 px-1 rounded-lg font-bold transition-all border border-gray-200 hover:bg-gray-50">8</button>
+                            </td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="text-gray-700">
+                            <th class="border border-gray-200 p-2 bg-gray-50 text-xs font-bold text-gray-500">ふせんの数</th>
+                            <!-- 入力可能なセル（初期状態は空欄、自由に数字を入力可能。正しい数値で図を表示。フォーカス時に段選択を連動） -->
+                            <td id="td-block-1" class="border border-gray-200 p-1">
+                                <input id="input-level-1" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(1, true)" oninput="checkInputAnswer(1, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                            <td id="td-block-2" class="border border-gray-200 p-1">
+                                <input id="input-level-2" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(2, true)" oninput="checkInputAnswer(2, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                            <td id="td-block-3" class="border border-gray-200 p-1">
+                                <input id="input-level-3" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(3, true)" oninput="checkInputAnswer(3, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                            <td id="td-block-4" class="border border-gray-200 p-1">
+                                <input id="input-level-4" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(4, true)" oninput="checkInputAnswer(4, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                            <td id="td-block-5" class="border border-gray-200 p-1">
+                                <input id="input-level-5" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(5, true)" oninput="checkInputAnswer(5, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                            <td id="td-block-6" class="border border-gray-200 p-1">
+                                <input id="input-level-6" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(6, true)" oninput="checkInputAnswer(6, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                            <td id="td-block-7" class="border border-gray-200 p-1">
+                                <input id="input-level-7" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(7, true)" oninput="checkInputAnswer(7, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                            <td id="td-block-8" class="border border-gray-200 p-1">
+                                <input id="input-level-8" type="text" inputmode="numeric" placeholder="" onfocus="selectLevel(8, true)" oninput="checkInputAnswer(8, this.value)" class="w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- メインロジック -->
+    <script>
+        // 状態管理
+        let currentLevel = 1; // 選択中の段数
+        let currentBlockCount = 1; // 選択中のブロック数（段数x段数で固定）
+        let GRID_SIZE = 40; // ステージに合わせて動的に計算するグリッドサイズ
+        let BLOCK_SIZE = 38; // 正方形ブロック自体のサイズ
+        let blocks = []; // ブロックデータ
+        let showBlocks = true; // 現在ステージ上にブロック（図）を表示するかどうかのフラグ
+        
+        // DOM要素
+        const stage = document.getElementById('stage');
+        const gridLines = document.getElementById('grid-lines');
+        const blocksContainer = document.getElementById('blocks-container');
+        const guideContainer = document.getElementById('guide-container');
+        const surrenderContainer = document.getElementById('surrender-container');
+
+        // ブロックの色（すべてオレンジ色で統一）
+        const blockColorClass = 'bg-orange-500 border-orange-600';
+
+        // 初期化
+        window.onload = () => {
+            selectLevel(1); // 初期起動時は1を選択
+            
+            // ウィンドウサイズ変更時に位置とサイズを再計算
+            window.addEventListener('resize', () => {
+                updateGridSize();
+                repositionGuideAndBlocks(false);
+            });
+        };
+
+        // ステージのサイズから、最適なグリッドサイズを動的に計算する
+        function updateGridSize() {
+            const stageWidth = stage.clientWidth || 600;
+            const stageHeight = stage.clientHeight || 400;
+
+            const maxCols = 2 * currentLevel - 1;
+            const maxRows = currentLevel;
+
+            // 少し余裕をもたせるための計算
+            const calcWidthSize = Math.floor((stageWidth - 60) / maxCols);
+            const calcHeightSize = Math.floor((stageHeight - 80) / maxRows);
+
+            GRID_SIZE = Math.min(Math.max(Math.min(calcWidthSize, calcHeightSize), 24), 50);
+            BLOCK_SIZE = GRID_SIZE - 2;
+
+            gridLines.style.backgroundSize = `${GRID_SIZE}px ${GRID_SIZE}px`;
+            gridLines.style.backgroundImage = `
+                linear-gradient(to right, rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 1px, transparent 1px)
+            `;
+        }
+
+        // 段数の切り替え
+        // fromInputがtrueの場合は、inputへのフォーカス処理（無限ループ防止）をスキップします
+        function selectLevel(level, fromInput = false) {
+            // 既に選択済みのレベルであれば処理をスキップ（入力中のフォーカス維持のため）
+            if (currentLevel === level && fromInput) return;
+
+            currentLevel = level;
+            currentBlockCount = level * level; // 段数に応じた数（1, 4, 9, 16...）
+
+            // 5段目以上の初期表示ルールを設定
+            if (level >= 5) {
+                // すでに正しい答えを入力済みの場合は図を表示したままにする
+                const inputVal = parseInt(document.getElementById(`input-level-${level}`).value.trim());
+                if (inputVal === level * level) {
+                    showBlocks = true;
+                    surrenderContainer.classList.add('hidden');
+                } else {
+                    showBlocks = false; // 5段目以上は最初は図（ふせん）を表示しない
+                    surrenderContainer.classList.remove('hidden'); // まいったボタンを表示
+                }
+            } else {
+                showBlocks = true; // 1〜4段目は最初から表示
+                surrenderContainer.classList.add('hidden'); // まいったボタンを隠す
+            }
+
+            // 1. ボタンとブロック数のセルの選択ハイライト状態を更新
+            for (let i = 1; i <= 8; i++) {
+                const btn = document.getElementById(`btn-level-${i}`);
+                const td = document.getElementById(`td-block-${i}`);
+                const input = document.getElementById(`input-level-${i}`);
+                
+                if (i === level) {
+                    btn.className = "w-full py-2 px-1 rounded-lg font-bold bg-orange-500 text-white border-orange-600 shadow-sm transition-all";
+                    td.className = "border border-orange-200 p-1 bg-orange-50 h-10 transition-all"; 
+                    input.className = "w-full h-8 text-center outline-none font-bold rounded transition-all bg-orange-50 text-orange-950 border border-orange-300 focus:border-orange-500 focus:ring-1 focus:ring-orange-500";
+                    
+                    // キーボード・ボタン操作など、入力欄クリック以外から切り替わった場合のみフォーカスを当てる
+                    if (!fromInput) {
+                        setTimeout(() => input.focus(), 50);
+                    }
+                } else {
+                    btn.className = "w-full py-2 px-1 rounded-lg font-bold bg-white text-gray-700 border-gray-200 hover:bg-gray-50 shadow-sm transition-all";
+                    td.className = "border border-gray-200 p-1 bg-white h-10 transition-all";
+                    input.className = "w-full h-8 text-center outline-none font-bold rounded transition-all bg-white text-gray-900 border border-gray-200 focus:border-orange-400 focus:ring-1 focus:ring-orange-400";
+                }
+            }
+
+            updateGridSize();
+            createPuzzle();
+        }
+
+        // ふせんの数のキー入力をチェックする（正解判定）
+        function checkInputAnswer(level, value) {
+            // 現在アクティブな段数以外の入力は無視
+            if (level !== currentLevel) return;
+
+            // 5段目未満は既に表示されているので判定不要
+            if (level < 5) return;
+
+            // 正解の数（段数 × 段数）
+            const correctAnswer = level * level;
+            const inputVal = parseInt(value.trim());
+
+            // 入力された値が正しい数値だった場合、図（ふせん）を表示する
+            if (inputVal === correctAnswer) {
+                revealBlocks();
+            }
+        }
+
+        // 図（ふせん）を表示する
+        function revealBlocks() {
+            showBlocks = true;
+            surrenderContainer.classList.add('hidden'); // まいったボタンを隠す
+            createPuzzle();
+        }
+
+        // パズル要素の生成
+        function createPuzzle() {
+            blocksContainer.innerHTML = '';
+            guideContainer.innerHTML = '';
+            blocks = [];
+            
+            repositionGuideAndBlocks(true);
+        }
+
+        // ガイド枠（計算用）とブロックの配置
+        function repositionGuideAndBlocks(forceAlign = false) {
+            const stageWidth = stage.clientWidth || 600;
+            const stageHeight = stage.clientHeight || 400;
+            
+            const maxCols = 2 * currentLevel - 1;
+            const pyramidWidth = maxCols * GRID_SIZE;
+            const pyramidHeight = currentLevel * GRID_SIZE;
+
+            // 左右は中央揃え
+            let startX = Math.floor((stageWidth - pyramidWidth) / 2);
+            // 上下はステージの下に揃える（下部にGRID_SIZEぶんの余白を設ける）
+            let startY = stageHeight - pyramidHeight - GRID_SIZE;
+
+            startX = Math.round(startX / GRID_SIZE) * GRID_SIZE;
+            startY = Math.round(startY / GRID_SIZE) * GRID_SIZE;
+
+            if (startY < 10) startY = 10;
+            if (startX < 0) startX = 0;
+
+            const targetPositions = [];
+            
+            // ピラミッド形状の配置位置計算 (1段目: 1個, 2段目: 3個, 3段目: 5個...)
+            for (let r = 0; r < currentLevel; r++) {
+                const blocksInRow = 2 * r + 1;
+                const rowStartCol = currentLevel - 1 - r;
+                
+                for (let c = 0; c < blocksInRow; c++) {
+                    const colIndex = rowStartCol + c;
+                    
+                    const targetX = startX + colIndex * GRID_SIZE + (GRID_SIZE - BLOCK_SIZE) / 2;
+                    const targetY = startY + r * GRID_SIZE + (GRID_SIZE - BLOCK_SIZE) / 2;
+
+                    targetPositions.push({ x: targetX, y: targetY });
+                }
+            }
+
+            // showBlocks が false の場合はふせん（ブロック）の生成をスキップ
+            if (!showBlocks) {
+                return;
+            }
+
+            const newBlocks = [];
+
+            // すべてのブロックを生成
+            for (let i = 0; i < currentBlockCount; i++) {
+                if (i >= targetPositions.length) break;
+
+                const targetPos = targetPositions[i];
+                const blockId = `block-${i}`;
+
+                let initX = targetPos.x;
+                let initY = targetPos.y;
+
+                if (!forceAlign && blocks.length > 0) {
+                    const oldBlock = blocks.find(b => b.id === blockId);
+                    if (oldBlock) {
+                        initX = oldBlock.currentX;
+                        initY = oldBlock.currentY;
+                    }
+                }
+
+                // 正方形ブロック（数字なし、すべてオレンジ色）
+                const blockEl = document.createElement('div');
+                blockEl.id = blockId;
+                blockEl.className = `absolute ${blockColorClass} rounded-md border-2 cursor-grab shadow-sm select-none transition-shadow`;
+                blockEl.style.width = `${BLOCK_SIZE}px`;
+                blockEl.style.height = `${BLOCK_SIZE}px`;
+                blockEl.style.left = `${initX}px`;
+                blockEl.style.top = `${initY}px`;
+                blockEl.style.zIndex = "20";
+
+                makeDraggable(blockEl);
+                blocksContainer.appendChild(blockEl);
+
+                newBlocks.push({
+                    id: blockId,
+                    element: blockEl,
+                    targetX: targetPos.x,
+                    targetY: targetPos.y,
+                    currentX: initX,
+                    currentY: initY
+                });
+            }
+
+            blocks = newBlocks;
+        }
+
+        // ドラッグ＆ドロップ制御
+        function makeDraggable(el) {
+            let startX = 0, startY = 0;
+            let initialLeft = 0, initialTop = 0;
+            let isDragging = false;
+
+            const dragStart = (e) => {
+                isDragging = true;
+                el.classList.add('dragging');
+                el.style.zIndex = "100";
+                
+                const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+                const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+
+                startX = clientX;
+                startY = clientY;
+                initialLeft = parseFloat(el.style.left) || 0;
+                initialTop = parseFloat(el.style.top) || 0;
+
+                if (e.type.startsWith('touch')) {
+                    document.addEventListener('touchmove', dragMove, { passive: false });
+                    document.addEventListener('touchend', dragEnd);
+                } else {
+                    document.addEventListener('mousemove', dragMove);
+                    document.addEventListener('mouseup', dragEnd);
+                }
+
+                if (e.cancelable) e.preventDefault();
+            };
+
+            const dragMove = (e) => {
+                if (!isDragging) return;
+
+                const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+                const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+
+                const dx = clientX - startX;
+                const dy = clientY - startY;
+
+                let newLeft = initialLeft + dx;
+                let newTop = initialTop + dy;
+
+                const stageRect = stage.getBoundingClientRect();
+                const maxLeft = stageRect.width - BLOCK_SIZE - 2;
+                const maxTop = stageRect.height - BLOCK_SIZE - 2;
+
+                newLeft = Math.max(2, Math.min(newLeft, maxLeft));
+                newTop = Math.max(2, Math.min(newTop, maxTop));
+
+                el.style.left = `${newLeft}px`;
+                el.style.top = `${newTop}px`;
+
+                const blockObj = blocks.find(b => b.element === el);
+                if (blockObj) {
+                    blockObj.currentX = newLeft;
+                    blockObj.currentY = newTop;
+                }
+
+                if (e.cancelable) e.preventDefault();
+            };
+
+            const dragEnd = (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+                el.classList.remove('dragging');
+                el.style.zIndex = "20";
+
+                const blockObj = blocks.find(b => b.element === el);
+                if (blockObj) {
+                    const offset = (GRID_SIZE - BLOCK_SIZE) / 2;
+                    
+                    let snapX = Math.round((blockObj.currentX - offset) / GRID_SIZE) * GRID_SIZE + offset;
+                    let snapY = Math.round((blockObj.currentY - offset) / GRID_SIZE) * GRID_SIZE + offset;
+
+                    const stageRect = stage.getBoundingClientRect();
+                    snapX = Math.max(offset, Math.min(snapX, stageRect.width - BLOCK_SIZE - offset));
+                    snapY = Math.max(offset, Math.min(snapY, stageRect.height - BLOCK_SIZE - offset));
+
+                    el.style.transition = 'left 0.1s ease-out, top 0.1s ease-out';
+                    el.style.left = `${snapX}px`;
+                    el.style.top = `${snapY}px`;
+
+                    blockObj.currentX = snapX;
+                    blockObj.currentY = snapY;
+
+                    setTimeout(() => {
+                        el.style.transition = '';
+                    }, 110);
+                }
+
+                document.removeEventListener('mousemove', dragMove);
+                document.removeEventListener('mouseup', dragEnd);
+                document.removeEventListener('touchmove', dragMove);
+                document.removeEventListener('touchend', dragEnd);
+            };
+
+            el.addEventListener('mousedown', dragStart);
+            el.addEventListener('touchstart', dragStart, { passive: false });
+        }
+    </script>
+</body>
+</html>
